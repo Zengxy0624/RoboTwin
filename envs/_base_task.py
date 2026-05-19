@@ -1,5 +1,6 @@
 import os
 import re
+import gc
 import sapien.core as sapien
 from sapien.render import clear_cache as sapien_clear_cache
 from sapien.utils.viewer import Viewer
@@ -391,7 +392,7 @@ class Base_Task(gym.Env):
         """
         load aloha robot urdf file, set root pose and set joints
         """
-        if not hasattr(self, "robot"):
+        if not hasattr(self, "robot") or self.robot is None:
             self.robot = Robot(self.scene, self.need_topp, **kwags)
             self.robot.set_planner(self.scene)
             self.robot.init_joints()
@@ -627,6 +628,34 @@ class Base_Task(gym.Env):
         self.eval_video_ffmpeg = ffmpeg
 
     def close_env(self, clear_cache=False):
+        if hasattr(self, "eval_video_ffmpeg"):
+            try:
+                self._del_eval_video_ffmpeg()
+            except Exception:
+                pass
+
+        if hasattr(self, "viewer"):
+            try:
+                self.viewer.close()
+            except Exception:
+                pass
+            self.viewer = None
+
+        if hasattr(self, "cameras"):
+            self.cameras = None
+
+        if hasattr(self, "robot"):
+            self.robot = None
+
+        if hasattr(self, "scene"):
+            self.scene = None
+
+        if hasattr(self, "renderer"):
+            self.renderer = None
+
+        if hasattr(self, "engine"):
+            self.engine = None
+
         if clear_cache:
             # for actor in self.scene.get_all_actors():
             #     self.scene.remove_actor(actor)

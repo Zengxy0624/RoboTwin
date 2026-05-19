@@ -84,6 +84,8 @@ class SubEnv:
         self.instruction_type = instruction_type
         self.global_lock = global_lock
         self.lock = threading.Lock()
+        self.reset_count = 0
+        self.clear_cache_freq = max(1, int(self.args.get("clear_cache_freq", 8)))
 
     def setup_task(self):
         self.close()
@@ -140,7 +142,9 @@ class SubEnv:
         with self.global_lock:
             with self.lock:
                 if self.task is not None:
-                    self.task.close_env()
+                    self.reset_count += 1
+                    should_clear_cache = self.reset_count % self.clear_cache_freq == 0
+                    self.task.close_env(clear_cache=should_clear_cache)
                 if env_seed is not None:
                     self.env_seed = env_seed
 
@@ -162,14 +166,14 @@ class SubEnv:
                         logging.warning(
                             f"RoboTwin SubEnv {self.env_id} reset error with seed {trial_seed}, error: {e}, trying new seed: {trial_seed + 1}"
                         )
-                        self.task.close_env()
+                        self.task.close_env(clear_cache=True)
                         trial_seed += 1
                         continue
                     except Exception as e:
                         logging.error(
                             f"RoboTwin SubEnv {self.env_id} reset error with seed {trial_seed}, error: {e}"
                         )
-                        self.task.close_env()
+                        self.task.close_env(clear_cache=True)
                         raise
 
         return
@@ -239,6 +243,7 @@ class VectorEnv(gym.Env):
         args = task_config
 
         args["planner_backend"] = args.get("planner_backend", "curobo") # Choices: [curobo, mplib]
+        args["clear_cache_freq"] = max(1, int(args.get("clear_cache_freq", 8)))
 
         embodiment_type = args.get("embodiment")
         embodiment_config_path = os.path.join(CONFIGS_PATH, "_embodiment_config.yml")
