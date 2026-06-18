@@ -1,0 +1,13 @@
+# Basic experiment configuration for the DiT policy
+policy_name: DiT
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+expert_data_num: null
+checkpoint_num: 600
+head_camera_type: D435
+encoder_tag: dinov3_ss   # checkpoint namespace per visual encoder
+feat_encoder: dinov3_ss  # frozen VFM used to tokenize live frames (return_tokens=True)
