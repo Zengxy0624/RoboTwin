@@ -9,3 +9,4 @@ instruction_type: unseen
 expert_data_num: null
 checkpoint_num: 600
 head_camera_type: D435
+encoder_tag: resnet18  # checkpoint namespace per visual encoder; override with --encoder_tag dinov3

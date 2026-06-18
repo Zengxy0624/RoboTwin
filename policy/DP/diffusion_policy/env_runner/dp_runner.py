@@ -87,12 +87,10 @@ class DPRunner:
         obs_dict = dict_apply(np_obs_dict, lambda x: torch.from_numpy(x).to(device=device))
         # run policy
         with torch.no_grad():
-            obs_dict_input = {}  # flush unused keys
-            obs_dict_input["head_cam"] = obs_dict["head_cam"].unsqueeze(0)
-            # obs_dict_input['front_cam'] = obs_dict['front_cam'].unsqueeze(0)
-            obs_dict_input["left_cam"] = obs_dict["left_cam"].unsqueeze(0)
-            obs_dict_input["right_cam"] = obs_dict["right_cam"].unsqueeze(0)
-            obs_dict_input["agent_pos"] = obs_dict["agent_pos"].unsqueeze(0)
+            # key-agnostic: works for image policies (head_cam/left_cam/right_cam/agent_pos)
+            # and precomputed-feature policies (head_cam_feat/agent_pos). The policy's
+            # obs_encoder only reads keys in its shape_meta; extra keys are ignored.
+            obs_dict_input = {k: v.unsqueeze(0) for k, v in obs_dict.items()}
 
             action_dict = policy.predict_action(obs_dict_input)
 

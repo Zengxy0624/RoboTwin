@@ -47,18 +47,20 @@ def main(cfg: OmegaConf):
     head_camera_type = cfg.head_camera_type
     head_camera_cfg = get_camera_config(head_camera_type)
     cfg.task.image_shape = [3, head_camera_cfg["h"], head_camera_cfg["w"]]
-    cfg.task.shape_meta.obs.head_cam.shape = [
-        3,
-        head_camera_cfg["h"],
-        head_camera_cfg["w"],
-    ]
+    if "head_cam" in cfg.task.shape_meta.obs:  # skip for precomputed-feature configs
+        cfg.task.shape_meta.obs.head_cam.shape = [
+            3,
+            head_camera_cfg["h"],
+            head_camera_cfg["w"],
+        ]
     OmegaConf.resolve(cfg)
     cfg.task.image_shape = [3, head_camera_cfg["h"], head_camera_cfg["w"]]
-    cfg.task.shape_meta.obs.head_cam.shape = [
-        3,
-        head_camera_cfg["h"],
-        head_camera_cfg["w"],
-    ]
+    if "head_cam" in cfg.task.shape_meta.obs:  # skip for precomputed-feature configs
+        cfg.task.shape_meta.obs.head_cam.shape = [
+            3,
+            head_camera_cfg["h"],
+            head_camera_cfg["w"],
+        ]
 
     cls = hydra.utils.get_class(cfg._target_)
     workspace: BaseWorkspace = cls(cfg)

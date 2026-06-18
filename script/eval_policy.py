@@ -14,6 +14,7 @@ from collections import deque
 import traceback
 
 import yaml
+import json
 from datetime import datetime
 import importlib
 import argparse
@@ -159,8 +160,17 @@ def main(usr_args):
 
     st_seed = 100000 * (1 + seed)
     suc_nums = []
-    test_num = 100
+    test_num = usr_args.get("test_num", 100)
     topk = 1
+
+    # progress file lives next to the checkpoint so killed (hung) evals can resume
+    encoder_tag = usr_args.get("encoder_tag", "resnet18")
+    # DiT policies ('*_dit') keep checkpoints + this progress file under policy/DiT, not policy/DP.
+    ckpt_root = "./policy/DiT" if encoder_tag.endswith("_dit") else "./policy/DP"
+    progress_path = (f"{ckpt_root}/checkpoints/{encoder_tag}/"
+                     f"{usr_args['task_name']}-{usr_args['ckpt_setting']}-"
+                     f"{usr_args['expert_data_num']}-{usr_args['seed']}/"
+                     f"eval_progress_{usr_args['checkpoint_num']}.json")
 
     model = get_model(usr_args)
     st_seed, suc_num = eval_policy(task_name,
@@ -170,7 +180,8 @@ def main(usr_args):
                                    st_seed,
                                    test_num=test_num,
                                    video_size=video_size,
-                                   instruction_type=instruction_type)
+                                   instruction_type=instruction_type,
+                                   progress_path=progress_path)
     suc_nums.append(suc_num)
 
     topk_success_rate = sorted(suc_nums, reverse=True)[:topk]
@@ -193,7 +204,8 @@ def eval_policy(task_name,
                 st_seed,
                 test_num=100,
                 video_size=None,
-                instruction_type=None):
+                instruction_type=None,
+                progress_path=None):
     print(f"\033[34mTask Name: {args['task_name']}\033[0m")
     print(f"\033[34mPolicy Name: {args['policy_name']}\033[0m")
 
@@ -214,6 +226,36 @@ def eval_policy(task_name,
     clear_cache_freq = args["clear_cache_freq"]
 
     args["eval_mode"] = True
+
+    # Resume from a prior (e.g. watchdog-killed) run: sapien can hang natively and the
+    # only recovery is killing the process, so we persist progress and continue.
+    if progress_path is not None and os.path.exists(progress_path):
+        try:
+            with open(progress_path) as f:
+                p = json.load(f)
+            TASK_ENV.suc = p["suc"]
+            TASK_ENV.test_num = p["test_num"]
+            succ_seed = p["succ_seed"]
+            now_id = p["now_id"]
+            suc_test_seed_list = p["suc_test_seed_list"]
+            pend = p.get("pending")
+            if pend is not None:
+                # the POLICY rollout for `pend` was in flight when killed -> the policy
+                # drove the sim into a native deadlock. That is a task FAILURE, so count
+                # it (test_num+1, no suc) instead of silently dropping it. succ_seed was
+                # already incremented for it at the pending-save, so it is consistent.
+                TASK_ENV.test_num += 1
+                now_seed = pend + 1
+                print(f"\033[93mRESUME eval: hung rollout seed={pend} counted as FAILURE; "
+                      f"suc={TASK_ENV.suc} test_num={TASK_ENV.test_num} now_seed={now_seed}\033[0m")
+            else:
+                # killed before the rollout (scene setup / expert-check) -> bad/unstable
+                # seed, not the policy's fault: skip it.
+                now_seed = p["now_seed"] + 1
+                print(f"\033[93mRESUME eval: skipped pre-rollout seed; suc={TASK_ENV.suc} "
+                      f"test_num={TASK_ENV.test_num} now_seed={now_seed}\033[0m")
+        except Exception as e:
+            print(f"progress load failed ({e}), starting fresh")
 
     while succ_seed < test_num:
         render_freq = args["render_freq"]
@@ -246,6 +288,16 @@ def eval_policy(task_name,
         if (not expert_check) or (TASK_ENV.plan_success and TASK_ENV.check_success()):
             succ_seed += 1
             suc_test_seed_list.append(now_seed)
+            # mark the policy rollout as pending: if it now hangs natively and gets
+            # watchdog-killed, resume counts this seed as a FAILURE (not skipped).
+            if progress_path is not None:
+                try:
+                    with open(progress_path, "w") as f:
+                        json.dump({"suc": TASK_ENV.suc, "test_num": TASK_ENV.test_num,
+                                   "succ_seed": succ_seed, "now_seed": now_seed, "now_id": now_id,
+                                   "suc_test_seed_list": suc_test_seed_list, "pending": now_seed}, f)
+                except Exception:
+                    pass
         else:
             now_seed += 1
             args["render_freq"] = render_freq
@@ -320,6 +372,17 @@ def eval_policy(task_name,
         )
         # TASK_ENV._take_picture()
         now_seed += 1
+
+        # persist progress so a killed (hung) run can resume from here
+        if progress_path is not None:
+            try:
+                os.makedirs(os.path.dirname(progress_path), exist_ok=True)
+                with open(progress_path, "w") as f:
+                    json.dump({"suc": TASK_ENV.suc, "test_num": TASK_ENV.test_num,
+                               "succ_seed": succ_seed, "now_seed": now_seed, "now_id": now_id,
+                               "suc_test_seed_list": suc_test_seed_list, "pending": None}, f)
+            except Exception as e:
+                print(f"progress save failed ({e})")
 
     return now_seed, TASK_ENV.suc
 

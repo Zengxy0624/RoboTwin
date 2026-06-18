@@ -262,7 +262,11 @@ class RobotWorkspace(BaseWorkspace):
                 if ((self.epoch + 1) % cfg.training.checkpoint_every) == 0:
                     # checkpointing
                     save_name = pathlib.Path(self.cfg.task.dataset.zarr_path).stem
-                    self.save_checkpoint(f"checkpoints/{save_name}-{seed}/{self.epoch + 1}.ckpt")  # TODO
+                    encoder_tag = self.cfg.get("encoder_tag", "resnet18")
+                    # DiT policies (encoder_tag '*_dit') keep their weights under policy/DiT/checkpoints,
+                    # not co-mingled with DP's. cwd is policy/DP at train time, so '../DiT' hops over.
+                    ckpt_base = "../DiT/checkpoints" if encoder_tag.endswith("_dit") else "checkpoints"
+                    self.save_checkpoint(f"{ckpt_base}/{encoder_tag}/{save_name}-{seed}/{self.epoch + 1}.ckpt")  # TODO
 
                 # ========= eval end for this epoch ==========
                 policy.train()
