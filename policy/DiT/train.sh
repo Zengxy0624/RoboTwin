@@ -9,18 +9,18 @@ expert_data_num=${3}
 seed=${4}
 action_dim=${5}
 gpu_id=${6}
-enc=${7:-dinov3_ss}
+enc=${7:-dinov3}
 
 head_camera_type=D435
 config_name=robot_dit_feat_${action_dim}
 
-# token grid (N, C) per encoder
+# token grid (N, C) per encoder (bare names; "_ss" kept only for back-compat)
 case $enc in
-  dinov3_ss|dinov3_ln) tok_n=196;  tok_c=1024 ;;
-  clip_ss)             tok_n=256;  tok_c=1024 ;;
-  depth_ss|depth_v2_ss) tok_n=1369; tok_c=1024 ;;
-  sam_ss)              tok_n=4096; tok_c=256  ;;
-  vjepa_ss)            tok_n=256;  tok_c=1024 ;;
+  dinov3|dinov3_ss|dinov3_ln)       tok_n=196;  tok_c=1024 ;;
+  clip|clip_ss)                     tok_n=256;  tok_c=1024 ;;
+  depth|depth_ss|depth_v2|depth_v2_ss) tok_n=1369; tok_c=1024 ;;
+  sam|sam_ss)                       tok_n=4096; tok_c=256  ;;
+  vjepa|vjepa_ss)                   tok_n=256;  tok_c=1024 ;;
   *) echo "unknown encoder $enc"; exit 1 ;;
 esac
 

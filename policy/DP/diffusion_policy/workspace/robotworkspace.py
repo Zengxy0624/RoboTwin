@@ -83,12 +83,24 @@ class RobotWorkspace(BaseWorkspace):
             self.ema_model.set_normalizer(normalizer)
 
         # configure lr scheduler
+        # Optional fixed optimization-step budget (Quincy-style): anneal the cosine
+        # within `max_global_steps` instead of across all `num_epochs`.
+        max_global_steps = cfg.training.get("max_global_steps", None)
+        checkpoint_every_steps = cfg.training.get("checkpoint_every_steps", None)
+        # Anneal horizon = the steps we will ACTUALLY run = min(budget, full-epoch steps).
+        # A short task may not accumulate `max_global_steps` within num_epochs; clamping to the
+        # achievable count keeps the cosine reaching ~0 at the real stop point (no high-LR cutoff).
+        full_epoch_steps = (len(train_dataloader) * cfg.training.num_epochs) // \
+            cfg.training.gradient_accumulate_every
+        if max_global_steps is not None:
+            num_training_steps = min(int(max_global_steps), full_epoch_steps)
+        else:
+            num_training_steps = full_epoch_steps
         lr_scheduler = get_scheduler(
             cfg.training.lr_scheduler,
             optimizer=self.optimizer,
             num_warmup_steps=cfg.training.lr_warmup_steps,
-            num_training_steps=(len(train_dataloader) * cfg.training.num_epochs) //
-            cfg.training.gradient_accumulate_every,
+            num_training_steps=num_training_steps,
             # pytorch assumes stepping LRScheduler every epoch
             # however huggingface diffusers steps it every batch
             last_epoch=self.global_step - 1,
@@ -145,6 +157,7 @@ class RobotWorkspace(BaseWorkspace):
         # training loop
         log_path = os.path.join(self.output_dir, "logs.json.txt")
 
+        reached_budget = False
         with JsonLogger(log_path) as json_logger:
             for local_epoch_idx in range(cfg.training.num_epochs):
                 step_log = dict()
@@ -198,6 +211,19 @@ class RobotWorkspace(BaseWorkspace):
 
                         if (cfg.training.max_train_steps
                                 is not None) and batch_idx >= (cfg.training.max_train_steps - 1):
+                            break
+
+                        # optional step-milestone checkpoints (for convergence probing)
+                        if (checkpoint_every_steps is not None) and (self.global_step > 0) \
+                                and (self.global_step % int(checkpoint_every_steps) == 0):
+                            _sn = pathlib.Path(self.cfg.task.dataset.zarr_path).stem
+                            _et = self.cfg.get("encoder_tag", "resnet18")
+                            _cb = "../DiT/checkpoints" if _et.endswith("_dit") else "checkpoints"
+                            self.save_checkpoint(f"{_cb}/{_et}/{_sn}-{seed}/step{self.global_step}.ckpt")
+
+                        # stop once the fixed step budget is reached
+                        if (max_global_steps is not None) and (self.global_step >= int(max_global_steps)):
+                            reached_budget = True
                             break
 
                 # at the end of each epoch
@@ -276,6 +302,15 @@ class RobotWorkspace(BaseWorkspace):
                 json_logger.log(step_log)
                 self.global_step += 1
                 self.epoch += 1
+
+                # budget reached: save the canonical <num_epochs>.ckpt (the path the
+                # eval driver reads) regardless of actual epoch, then stop.
+                if reached_budget:
+                    _sn = pathlib.Path(self.cfg.task.dataset.zarr_path).stem
+                    _et = self.cfg.get("encoder_tag", "resnet18")
+                    _cb = "../DiT/checkpoints" if _et.endswith("_dit") else "checkpoints"
+                    self.save_checkpoint(f"{_cb}/{_et}/{_sn}-{seed}/{self.cfg.training.num_epochs}.ckpt")
+                    break
 
 
 class BatchSampler:

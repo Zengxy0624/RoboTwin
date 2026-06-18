@@ -7,7 +7,7 @@ ckpt_setting=${3}
 expert_data_num=${4}
 seed=${5}
 gpu_id=${6}
-enc=${7:-dinov3_ss}
+enc=${7:-dinov3}
 
 export CUDA_VISIBLE_DEVICES=${gpu_id}
 export HF_HUB_OFFLINE=1

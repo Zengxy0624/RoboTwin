@@ -8,7 +8,7 @@ _target_: diffusion_policy.workspace.robotworkspace.RobotWorkspace
 task_name: ${task.name}
 shape_meta: ${task.shape_meta}
 exp_name: "default"
-encoder_tag: dinov3_ss   # ckpt namespace; override per encoder
+encoder_tag: dinov3   # ckpt namespace; override per encoder (bare name; DiT reads raw tokens, no spatial-softmax)
 tok_n: 196               # tokens per frame (dinov3=196); override per encoder
 tok_c: 1024              # token width (dinov3=1024); override per encoder
 normalize_tokens: False  # VFM features are fine raw
@@ -57,14 +57,14 @@ ema:
   max_value: 0.9999
 
 dataloader:
-  batch_size: 64
+  batch_size: 384   # Quincy's robotwin-dino setup (needs ~96GB for SAM tokens; train==val required)
   num_workers: 0
   shuffle: True
   pin_memory: True
   persistent_workers: False
 
 val_dataloader:
-  batch_size: 64
+  batch_size: 384   # Quincy's robotwin-dino setup (needs ~96GB for SAM tokens; train==val required)
   num_workers: 0
   shuffle: False
   pin_memory: True
@@ -72,10 +72,10 @@ val_dataloader:
 
 optimizer:
   _target_: torch.optim.AdamW
-  lr: 1.0e-4
-  betas: [0.95, 0.999]
+  lr: 1.0e-4              # same as Quincy
+  betas: [0.9, 0.999]    # Quincy
   eps: 1.0e-8
-  weight_decay: 1.0e-6
+  weight_decay: 0.04     # Quincy (was 1e-6; strong wd -- VALIDATE on one task, tuned for his 130M)
 
 training:
   device: "cuda:0"
@@ -83,8 +83,8 @@ training:
   debug: False
   resume: True
   lr_scheduler: cosine
-  lr_warmup_steps: 500
-  num_epochs: 600
+  lr_warmup_steps: 1500   # Quincy: 5 epochs x 300 ipe = 1500 warmup steps
+  num_epochs: 600         # nominal label only (filename 600.ckpt); real stop = max_global_steps
   gradient_accumulate_every: 1
   use_ema: True
   freeze_encoder: False
@@ -93,6 +93,13 @@ training:
   val_every: 1
   sample_every: 5
   max_train_steps: null
+  # Total optimization-step budget. null => train the full num_epochs (old behavior).
+  # When set, the cosine LR anneals within this many steps, training stops at this
+  # step count, and the final weights are saved as <num_epochs>.ckpt (so the eval
+  # driver path is unchanged). Equalizes wall-clock across tasks (Quincy-style).
+  max_global_steps: 12000   # ~300 epoch-equiv @ batch 384 (~4.6M samples): 2x Quincy's "converges", 0.5x RoboTwin's 600ep default
+  # If set, also dump step{N}.ckpt every N steps (for probing the convergence plateau).
+  checkpoint_every_steps: null
   max_val_steps: null
   tqdm_interval_sec: 1.0
 

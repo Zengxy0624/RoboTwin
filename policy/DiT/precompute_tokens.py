@@ -2,8 +2,8 @@
 cross-attention DiT policy.
 
 Like scripts/campaign/precompute_features.py but caches the pre-pool tokens
-(T, N, C) instead of the pooled (T, D). The SAME build_frozen_encoder(enc,
-return_tokens=True) is used here and at eval time -> bit-identical features.
+(T, N, C) instead of the pooled (T, D). The SAME build_dit_encoder(enc) is used
+here and at eval time -> bit-identical features.
 
 Usage (run from the robotwin2 root, in the RoboTwin conda env):
     python policy/DiT/precompute_tokens.py <task> <setting> <num> <enc> [--bs 32] [--limit N]
@@ -17,7 +17,7 @@ sys.path.append("policy/DP")
 import zarr
 import numpy as np
 import torch
-from diffusion_policy.model.vision.vfm_encoder import build_frozen_encoder
+from dit_encoder import build_dit_encoder
 
 
 def main():
@@ -43,7 +43,7 @@ def main():
     T = imgs.shape[0]
     if a.limit:
         T = min(T, a.limit)
-    enc = build_frozen_encoder(a.enc, return_tokens=True).cuda().eval()
+    enc = build_dit_encoder(a.enc).cuda().eval()
 
     # Stream tokens straight to disk: keep only one batch in RAM, never the whole
     # (T, N, C) tensor. depth tokens are 1369x1024, so accumulating all T frames +

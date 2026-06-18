@@ -18,8 +18,8 @@ def encode_obs(observation):
 
 
 def get_model(usr_args):
-    encoder_tag = usr_args.get("encoder_tag", "dinov3_ss")
-    feat_encoder = usr_args.get("feat_encoder", "dinov3_ss")
+    encoder_tag = usr_args.get("encoder_tag", "dinov3")
+    feat_encoder = usr_args.get("feat_encoder", "dinov3")
     ckpt_root = "./policy/DiT" if encoder_tag.endswith("_dit") else "./policy/DP"
     ckpt_file = (f"{ckpt_root}/checkpoints/{encoder_tag}/"
                  f"{usr_args['task_name']}-{usr_args['ckpt_setting']}-"
@@ -33,8 +33,8 @@ def get_model(usr_args):
     n_obs_steps = train_cfg["n_obs_steps"]
     n_action_steps = train_cfg["n_action_steps"]
 
-    from diffusion_policy.model.vision.vfm_encoder import build_frozen_encoder
-    encoder = build_frozen_encoder(feat_encoder, return_tokens=True)
+    from dit_encoder import build_dit_encoder
+    encoder = build_dit_encoder(feat_encoder)
 
     return DiT_Model(ckpt_file, n_obs_steps=n_obs_steps,
                      n_action_steps=n_action_steps, encoder=encoder)
