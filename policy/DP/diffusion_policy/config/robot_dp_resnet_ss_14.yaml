@@ -8,7 +8,7 @@ _target_: diffusion_policy.workspace.robotworkspace.RobotWorkspace
 task_name: ${task.name}
 shape_meta: ${task.shape_meta}
 exp_name: "default"
-encoder_tag: resnet18  # checkpoint namespace per visual encoder (eval must pass matching --encoder_tag)
+encoder_tag: resnet18_ss  # ResNet18 (scratch) + spatial-softmax (original DP recipe)
 
 horizon: 8
 n_obs_steps: 3
@@ -23,7 +23,7 @@ policy:
   _target_: diffusion_policy.policy.diffusion_unet_image_policy.DiffusionUnetImagePolicy
 
   shape_meta: ${shape_meta}
-  
+
   noise_scheduler:
     _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
     num_train_timesteps: 100
@@ -38,9 +38,10 @@ policy:
     _target_: diffusion_policy.model.vision.multi_image_obs_encoder.MultiImageObsEncoder
     shape_meta: ${shape_meta}
     rgb_model:
-      _target_: diffusion_policy.model.vision.model_getter.get_resnet
+      _target_: diffusion_policy.model.vision.vfm_encoder.ResNetSpatialEncoder
       name: resnet18
       weights: null
+      pool: spatial_softmax
     resize_shape: null
     crop_shape: null
     # constant center crop

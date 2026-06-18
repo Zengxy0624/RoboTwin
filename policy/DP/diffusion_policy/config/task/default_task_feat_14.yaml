@@ -1,0 +1,43 @@
+name: task_config
+
+image_shape: [3, -1, -1]   # unused (features precomputed) but train.py writes to it
+
+# feat_dim is the frozen encoder's output width (dino/clip/depth/vjepa=2048, sam=512);
+# override per encoder. head_cam_feat is a precomputed low_dim obs (no encoder at train).
+shape_meta: &shape_meta
+  obs:
+    head_cam_feat:
+      shape: ["${feat_dim}"]
+      type: low_dim
+    agent_pos:
+      shape: [14]
+      type: low_dim
+  action:
+    shape: [14]
+
+env_runner:
+  _target_: diffusion_policy.env_runner.pusht_image_runner.PushTImageRunner
+  n_train: 6
+  n_train_vis: 2
+  train_start_seed: 0
+  n_test: 50
+  n_test_vis: 4
+  legacy_test: True
+  test_start_seed: 100000
+  max_steps: 300
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  fps: 10
+  past_action: ${past_action_visible}
+  n_envs: null
+
+dataset:
+  _target_: diffusion_policy.dataset.robot_feature_dataset.RobotFeatureDataset
+  zarr_path: data/useless.zarr
+  batch_size: ${dataloader.batch_size}
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.02
+  max_train_episodes: null
