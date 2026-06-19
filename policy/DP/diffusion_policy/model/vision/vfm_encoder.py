@@ -12,6 +12,7 @@ global-average pooling. Frozen VFMs (DINOv3/SAM/...) keep their dense spatial
 features; the from-scratch ResNet18 + spatial-softmax is the original Diffusion
 Policy recipe.
 """
+import os
 from contextlib import nullcontext
 
 import torch
@@ -24,9 +25,16 @@ IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
 CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
+SAM3_MEAN = [0.5, 0.5, 0.5]
+SAM3_STD = [0.5, 0.5, 0.5]
 
-# Absolute path to the local DINOv3 weights (gated HF repo, downloaded once).
-_DINOV3_PATH = "/home/xzeng28/projects/visual-prior-interface/checkpoints/dinov3-vitl16"
+# Absolute paths to local VFM weights (gated / large HF repos, downloaded once).
+_CHECKPOINT_ROOT = "/home/xzeng28/projects/visual-prior-interface/checkpoints"
+_DINOV3_PATH = os.path.join(_CHECKPOINT_ROOT, "dinov3-vitl16")
+_CLIP_PATH = os.path.join(_CHECKPOINT_ROOT, "clip-vit-large-patch14")
+_DEPTH_V2_PATH = os.path.join(_CHECKPOINT_ROOT, "depth-anything-v2-large-hf")
+_VJEPA2_PATH = os.path.join(_CHECKPOINT_ROOT, "vjepa2-vitl-fpc64-256")
+_SAM3_PATH = os.path.join(_CHECKPOINT_ROOT, "sam3")
 
 
 def build_frozen_encoder(tag, return_tokens=False):
@@ -52,9 +60,11 @@ def build_frozen_encoder(tag, return_tokens=False):
     if tag == "depth_ss":
         return DepthAnythingEncoder(return_tokens=rt)
     if tag == "depth_v2_ss":  # Depth-Anything V2 (better DINOv2 backbone), official 518 input
-        return DepthAnythingEncoder(model_name="depth-anything/Depth-Anything-V2-Large-hf", return_tokens=rt)
+        return DepthAnythingEncoder(model_name=_DEPTH_V2_PATH, return_tokens=rt)
     if tag == "sam_ss":
         return SAMEncoder(return_tokens=rt)
+    if tag == "sam3_ss":
+        return SAM3Encoder(return_tokens=rt)
     if tag == "vjepa_ss":
         return VJEPA2Encoder(return_tokens=rt)
     raise ValueError(f"not a cacheable frozen encoder: {tag}")
@@ -250,10 +260,22 @@ class _FrozenVFM(nn.Module):
         return patches.transpose(1, 2).reshape(B, C, h, w)
 
 
+def _load_prefixed_safetensors(module, path, prefix):
+    """Load only one submodule from a safetensors checkpoint."""
+    from safetensors import safe_open
+
+    state_dict = {}
+    with safe_open(path, framework="pt", device="cpu") as f:
+        for key in f.keys():
+            if key.startswith(prefix):
+                state_dict[key[len(prefix):]] = f.get_tensor(key)
+    module.load_state_dict(state_dict, strict=True)
+
+
 class CLIPEncoder(_FrozenVFM):
     """Frozen CLIP ViT vision tower -> spatial-softmax. 224 input, CLIP norm."""
 
-    def __init__(self, model_name="openai/clip-vit-large-patch14", freeze=True,
+    def __init__(self, model_name=_CLIP_PATH, freeze=True,
                  pool="spatial_softmax", img_size=224, temperature=1.0, return_tokens=False):
         super().__init__(freeze, pool, temperature, return_tokens)
         from transformers import CLIPVisionModel
@@ -300,7 +322,7 @@ class DepthAnythingEncoder(_FrozenVFM):
     """Frozen Depth-Anything backbone (DINOv2) deepest feature map ->
     spatial-softmax. 224 input, ImageNet norm."""
 
-    def __init__(self, model_name="LiheYoung/depth-anything-large-hf", freeze=True,
+    def __init__(self, model_name=_DEPTH_V2_PATH, freeze=True,
                  pool="spatial_softmax", img_size=518, temperature=1.0, return_tokens=False):  # 518 = official (14x37)
         super().__init__(freeze, pool, temperature, return_tokens)
         from transformers import AutoModelForDepthEstimation
@@ -324,7 +346,7 @@ class VJEPA2Encoder(_FrozenVFM):
     a short clip, then averaging the temporal tubelets -> spatial-softmax.
     256 input, ImageNet norm. Expensive (runs the video backbone)."""
 
-    def __init__(self, model_name="facebook/vjepa2-vitl-fpc64-256", freeze=True,
+    def __init__(self, model_name=_VJEPA2_PATH, freeze=True,
                  pool="spatial_softmax", img_size=256, n_frames=16, temperature=1.0, return_tokens=False):  # 16 = official single-image
         super().__init__(freeze, pool, temperature, return_tokens)
         from transformers import AutoModel
@@ -347,3 +369,46 @@ class VJEPA2Encoder(_FrozenVFM):
                 return tokens                                   # (B, 256, C)
             fmap = self._tokens_to_map(tokens, drop_prefix=0)
         return _reduce(fmap, None, self.pool, self.ssm)
+
+
+class SAM3Encoder(_FrozenVFM):
+    """Frozen SAM3 / Perception Encoder ViT tokens.
+
+    The HF repo is a full SAM3 video/detector checkpoint, but the DiT only needs
+    the vision encoder. We load the `detector_model.vision_encoder.*` weights
+    into `Sam3VisionModel` and read the raw ViT patch tokens. A 224 input with
+    SAM3's patch size 14 gives a 16x16 grid = 256 tokens.
+    """
+
+    def __init__(self, model_path=_SAM3_PATH, freeze=True,
+                 pool="spatial_softmax", img_size=224, temperature=1.0, return_tokens=False):
+        super().__init__(freeze, pool, temperature, return_tokens)
+        from transformers import AutoConfig, Sam3VisionModel
+
+        cfg = AutoConfig.from_pretrained(model_path, local_files_only=True)
+        vision_config = cfg.detector_config.vision_config
+        # SAM3 ViT RoPE is created for config.backbone_config.image_size at init.
+        # Match it to our token-budget input size (224 -> 16x16 tokens).
+        vision_config.backbone_config.image_size = img_size
+        self.pre = _Preproc(img_size, SAM3_MEAN, SAM3_STD)
+        self.model = Sam3VisionModel(vision_config)
+        _load_prefixed_safetensors(
+            self.model,
+            os.path.join(model_path, "model.safetensors"),
+            "detector_model.vision_encoder.",
+        )
+        self._finish_freeze()
+
+    def forward(self, x):
+        ctx = torch.no_grad() if self.freeze else nullcontext()
+        with ctx:
+            tokens = self.model(self.pre(x)).last_hidden_state  # (B, 256, 1024) at 224
+            if self.return_tokens:
+                return tokens
+            B, N, C = tokens.shape
+            h = w = int(round(N ** 0.5))
+            if h * w != N:
+                raise RuntimeError(f"SAM3 token count is not square: {N}")
+            fmap = tokens.transpose(1, 2).reshape(B, C, h, w)
+        return _reduce(fmap, tokens, self.pool, self.ssm)
+

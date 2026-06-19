@@ -3,7 +3,7 @@ name: task_config
 image_shape: [3, -1, -1]   # unused (tokens precomputed) but train.py writes to it
 
 # tok_n / tok_c are the frozen encoder's token grid: dinov3=196x1024, clip=256x1024,
-# depth=1369x1024, sam=4096x256, vjepa=256x1024. Override per encoder.
+# depth_v2=1369x1024, sam3=256x1024, vjepa=256x1024. Override per encoder.
 shape_meta: &shape_meta
   obs:
     head_cam_tokens:

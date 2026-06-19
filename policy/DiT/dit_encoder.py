@@ -2,7 +2,7 @@
 
 The cross-attention DiT reads PRE-POOL patch tokens (return_tokens=True), so it does
 NOT use the DP campaign's spatial-softmax "_ss" readout variants -- hence bare names
-(dinov3, clip, depth, depth_v2, sam, vjepa) and no "_ss" here.
+(dinov3, clip, depth_v2, sam3, vjepa) and no "_ss" here.
 
 The encoder *implementations* (DINOv3Encoder, ...) are reused from DP's vfm_encoder
 so the live-eval features stay bit-identical to precompute_tokens.py. Only this thin
@@ -13,6 +13,7 @@ from diffusion_policy.model.vision.vfm_encoder import (
     CLIPEncoder,
     DepthAnythingEncoder,
     SAMEncoder,
+    SAM3Encoder,
     VJEPA2Encoder,
     _DINOV3_PATH,
 )
@@ -24,14 +25,12 @@ def build_dit_encoder(name):
         return DINOv3Encoder(model_path=_DINOV3_PATH, self_preproc=True, return_tokens=True)
     if name == "clip":
         return CLIPEncoder(return_tokens=True)
-    if name == "depth":
+    if name in {"depth", "depth_v2"}:
         return DepthAnythingEncoder(return_tokens=True)
-    if name == "depth_v2":
-        return DepthAnythingEncoder(
-            model_name="depth-anything/Depth-Anything-V2-Large-hf", return_tokens=True
-        )
     if name == "sam":
         return SAMEncoder(return_tokens=True)
+    if name == "sam3":
+        return SAM3Encoder(return_tokens=True)
     if name == "vjepa":
         return VJEPA2Encoder(return_tokens=True)
     raise ValueError(f"unknown DiT encoder: {name!r}")

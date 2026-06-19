@@ -20,6 +20,7 @@ case $enc in
   clip|clip_ss)                     tok_n=256;  tok_c=1024 ;;
   depth|depth_ss|depth_v2|depth_v2_ss) tok_n=1369; tok_c=1024 ;;
   sam|sam_ss)                       tok_n=4096; tok_c=256  ;;
+  sam3|sam3_ss)                     tok_n=256;  tok_c=1024 ;;
   vjepa|vjepa_ss)                   tok_n=256;  tok_c=1024 ;;
   *) echo "unknown encoder $enc"; exit 1 ;;
 esac

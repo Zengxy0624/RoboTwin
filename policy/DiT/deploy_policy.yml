@@ -9,5 +9,5 @@ instruction_type: unseen
 expert_data_num: null
 checkpoint_num: 600
 head_camera_type: D435
-encoder_tag: dinov3_ss   # checkpoint namespace per visual encoder
-feat_encoder: dinov3_ss  # frozen VFM used to tokenize live frames (return_tokens=True)
+encoder_tag: dinov3      # checkpoint namespace per visual encoder
+feat_encoder: dinov3     # frozen VFM used to tokenize live frames (return_tokens=True)
