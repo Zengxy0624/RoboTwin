@@ -158,7 +158,12 @@ def main(usr_args):
 
     seed = usr_args["seed"]
 
-    st_seed = 100000 * (1 + seed)
+    # Optional eval sharding: split the 100 test episodes across N processes that all
+    # load the SAME checkpoint (via `seed`) but walk DISJOINT env seed-bands and write
+    # SEPARATE progress shards. Unset => unchanged (band + progress keyed by `seed`).
+    eval_seed_base = usr_args.get("eval_seed_base", None)
+    band = seed if eval_seed_base is None else eval_seed_base
+    st_seed = 100000 * (1 + band)
     suc_nums = []
     test_num = usr_args.get("test_num", 100)
     topk = 1
@@ -167,10 +172,11 @@ def main(usr_args):
     encoder_tag = usr_args.get("encoder_tag", "resnet18")
     # DiT policies ('*_dit') keep checkpoints + this progress file under policy/DiT, not policy/DP.
     ckpt_root = "./policy/DiT" if encoder_tag.endswith("_dit") else "./policy/DP"
+    shard_sfx = "" if eval_seed_base is None else f".s{eval_seed_base}"
     progress_path = (f"{ckpt_root}/checkpoints/{encoder_tag}/"
                      f"{usr_args['task_name']}-{usr_args['ckpt_setting']}-"
                      f"{usr_args['expert_data_num']}-{usr_args['seed']}/"
-                     f"eval_progress_{usr_args['checkpoint_num']}.json")
+                     f"eval_progress_{usr_args['checkpoint_num']}{shard_sfx}.json")
 
     model = get_model(usr_args)
     st_seed, suc_num = eval_policy(task_name,
