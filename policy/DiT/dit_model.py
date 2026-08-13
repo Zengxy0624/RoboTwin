@@ -63,6 +63,17 @@ class DiT_Model:
         if cfg.training.use_ema:
             policy = workspace.ema_model
 
+        # Optional eval-time DDIM acceleration (no retrain): set DIT_DDIM_STEPS=N to
+        # swap the trained DDPM sampler for DDIM with N steps. from_config inherits the
+        # exact noise schedule + prediction_type; unset => unchanged (full DDPM).
+        ddim_steps = os.environ.get("DIT_DDIM_STEPS")
+        if ddim_steps:
+            from diffusers import DDIMScheduler
+            policy.noise_scheduler = DDIMScheduler.from_config(policy.noise_scheduler.config)
+            policy.num_inference_steps = int(ddim_steps)
+            print(f"[DiT] DDIM sampler, {ddim_steps} steps (was DDPM "
+                  f"{policy.noise_scheduler.config.num_train_timesteps})")
+
         device = torch.device(device)
         policy.to(device)
         policy.eval()
